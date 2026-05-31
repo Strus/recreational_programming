@@ -18,7 +18,7 @@ go_to_parent :: proc() {
     page = 0
 }
 
-open :: proc(file_info : ^os.File_Info) {
+open :: proc(file_info: ^os.File_Info) {
     if file_info.type == .Directory {
         cwd = file_info.fullpath
         current_cursor_pos = FILE_TREE_POS + 1
@@ -32,8 +32,8 @@ open :: proc(file_info : ^os.File_Info) {
 	p, err := os.process_start(desc)
 }
 
-edit :: proc(s : ^t.Screen, file_info : ^os.File_Info) {
-    bring_back_fm :: proc(s : ^t.Screen) {
+edit :: proc(s:  ^t.Screen, file_info: ^os.File_Info) {
+    bring_back_fm :: proc(s: ^t.Screen) {
         t.set_term_mode(s, .Cbreak)
         t.clear(s, .Everything)
         t.blit(s)
@@ -56,6 +56,43 @@ edit :: proc(s : ^t.Screen, file_info : ^os.File_Info) {
     if err == os.ERROR_NONE {
         _, _ = os.process_wait(p)
 	}
+}
+
+draw_text :: proc(
+    screen: ^t.Screen,
+    x, y: uint,
+    text: string,
+    styles: bit_set[t.Text_Style] = { .None },
+    fg: t.Any_Color = nil,
+    bg: t.Any_Color = nil
+) {
+    t.reset_styles(screen)
+
+    t.set_color_style(screen, fg, bg)
+    t.set_text_style(screen, styles)
+    t.move_cursor(screen, x, y)
+    t.write(screen, text)
+
+    t.reset_styles(screen)
+}
+
+draw_textf :: proc(
+    screen: ^t.Screen,
+    x, y: uint,
+    text: string,
+    args: ..any,
+    styles: bit_set[t.Text_Style] = { .None },
+    fg: t.Any_Color = nil,
+    bg: t.Any_Color = nil
+) {
+    t.reset_styles(screen)
+
+    t.set_color_style(screen, fg, bg)
+    t.set_text_style(screen, styles)
+    t.move_cursor(screen, x, y)
+    t.writef(screen, text, ..args)
+
+    t.reset_styles(screen)
 }
 
 main :: proc() {
@@ -105,13 +142,8 @@ main :: proc() {
             page += 1
         }
 
-        t.move_cursor(&s, 0, 0)
-        t.writef(&s, "%s:", cwd)
-
-        t.move_cursor(&s, FILE_TREE_POS, PADDING)
-        t.set_text_style(&s, { .Bold })
-        t.writef(&s, "..")
-        t.reset_styles(&s)
+        draw_textf(&s, 0, 0, "%s", cwd)
+        draw_text(&s, FILE_TREE_POS, PADDING, "..", styles={ .Bold })
 
         for file_info, i in tree[page*term_size.h:] {
             i := cast(uint)i
@@ -119,28 +151,22 @@ main :: proc() {
                 break
             }
 
-            t.move_cursor(&s, FILE_TREE_POS + 1 + i, PADDING)
             #partial switch file_info.type {
             case .Directory: {
-                t.set_text_style(&s, { .Bold })
-                t.writef(&s, "%s", file_info.name)
+                draw_textf(&s, FILE_TREE_POS + i + 1, PADDING, "%s", file_info.name, styles={ .Bold })
             }
             case .Symlink: {
-                t.set_color_style(&s, .Red, nil)
                 link_path, err := os.read_link(file_info.fullpath, context.allocator)
                 defer delete(link_path)
                 if err == os.ERROR_NONE {
-                    t.writef(&s, "%s -> %s", file_info.name, link_path)
+                    draw_textf(&s, FILE_TREE_POS + i + 1, PADDING, "%s -> %s", file_info.name, link_path, fg=.Red)
                 }
             }
-            // case: t.writef(&s, "%.1fM %s", cast(f32)file_info.size/1024/1024, file_info.name)
-            case: t.writef(&s, "%s", file_info.name)
+            case: draw_textf(&s, FILE_TREE_POS + i + 1, PADDING, "%s", file_info.name)
             }
-            t.reset_styles(&s)
         }
 
-        t.move_cursor(&s, term_size.h - 1, 0)
-        t.writef(&s, "current_pos: %d | page: %d", current_cursor_pos, page)
+        draw_textf(&s, term_size.h - 1, 0, "current_pos: %d | page: %d", current_cursor_pos, page)
 
         t.move_cursor(&s, current_cursor_pos, PADDING)
         t.blit(&s)
@@ -153,6 +179,13 @@ main :: proc() {
             case .K: current_cursor_pos -= 1
             case .H: go_to_parent()
             case .D: current_cursor_pos += term_size.h / 2
+            case .G: {
+                if input.mod == .Shift {
+                    current_cursor_pos = term_size.h - 1
+                } else {
+                    current_cursor_pos = FILE_TREE_POS
+                }
+            }
             case .U: {
                 if cast(int)current_cursor_pos - cast(int)term_size.h > 0 {
                     current_cursor_pos -= term_size.h / 2
