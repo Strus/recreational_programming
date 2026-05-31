@@ -9,62 +9,62 @@ GRID_WIDTH_PX       :: 800
 GRID_HEIGHT_PX      :: 800
 GRID_WIDTH          :: GRID_WIDTH_PX / GRID_CELL_SIZE
 GRID_HEIGHT         :: GRID_HEIGHT_PX / GRID_CELL_SIZE
-GRID_MARGIN : [2]i32 : { GRID_CELL_SIZE, GRID_CELL_SIZE * 2 }
+GRID_MARGIN: [2]i32 : { GRID_CELL_SIZE, GRID_CELL_SIZE * 2 }
 
 Snake :: struct {
-    x : i32,
-    y : i32,
-    next : ^Snake,
+    x: i32,
+    y: i32,
+    next: ^Snake,
 }
 
 Direction :: enum{
-    UP,
-    DOWN,
-    LEFT,
-    RIGHT,
-    UNKNOWN,
+    Up,
+    Down,
+    Left,
+    Right,
+    Unknown,
 }
 
-DirectionVectors := [Direction][2]i32 {
-    .UP      = {  0, -1 },
-    .DOWN    = {  0,  1 },
-    .LEFT    = { -1,  0 },
-    .RIGHT   = {  1,  0 },
-    .UNKNOWN = {  0,  0 },
+Direction_Vectors := [Direction][2]i32 {
+    .Up      = {  0, -1 },
+    .Down    = {  0,  1 },
+    .Left    = { -1,  0 },
+    .Right   = {  1,  0 },
+    .Unknown = {  0,  0 },
 }
 
 GameState :: enum{
-    PLAY,
-    GAME_OVER,
+    Play,
+    Game_Over,
 }
 
-state : GameState = .PLAY
-grid : [GRID_WIDTH][GRID_HEIGHT]bool
-free_cells : [dynamic][2]i32
+state: GameState = .Play
+grid: [GRID_WIDTH][GRID_HEIGHT]bool
+free_cells: [dynamic][2]i32
 snake := Snake{x = GRID_WIDTH / 2, y = GRID_HEIGHT / 2}
-snake_poll : [dynamic; GRID_WIDTH * GRID_HEIGHT]Snake
-apple : [2]i32 = { 0, 0 }
+snake_poll: [dynamic; GRID_WIDTH * GRID_HEIGHT]Snake
+apple: [2]i32 = { 0, 0 }
 score := 0
-tick_timer : f32 = 0.0
-tick_interval : f32 = 0.10
+tick_timer: f32 = 0.0
+tick_interval: f32 = 0.10
 
-get_opposite_direction :: proc(direction : Direction) -> Direction {
+get_opposite_direction :: proc(direction: Direction) -> Direction {
     switch direction {
-    case .UP: return .DOWN
-    case .DOWN: return .UP
-    case .LEFT: return .RIGHT
-    case .RIGHT: return .LEFT
-    case .UNKNOWN: return .UNKNOWN
+    case .Up: return .Down
+    case .Down: return .Up
+    case .Left: return .Right
+    case .Right: return .Left
+    case .Unknown: return .Unknown
     }
 
-    return .UNKNOWN
+    return .Unknown
 }
 
-to_grid_x :: proc(pos : i32) -> i32 {
+to_grid_x :: proc(pos: i32) -> i32 {
     return pos * GRID_CELL_SIZE + GRID_MARGIN.x
 }
 
-to_grid_y :: proc(pos : i32) -> i32 {
+to_grid_y :: proc(pos: i32) -> i32 {
     return pos * GRID_CELL_SIZE + GRID_MARGIN.y
 }
 
@@ -103,14 +103,14 @@ randomize_apple_position :: proc() {
     apple.y = random_free_pos.y
 }
 
-move_snake :: proc(direction : Direction, direction_changed : bool) {
+move_snake :: proc(direction: Direction, direction_changed: bool) {
     prev_x := snake.x
     prev_y := snake.y
 
     tick_timer += rl.GetFrameTime()
     if (tick_timer >= tick_interval || direction_changed) {
-        snake.x += DirectionVectors[direction].x
-        snake.y += DirectionVectors[direction].y
+        snake.x += Direction_Vectors[direction].x
+        snake.y += Direction_Vectors[direction].y
         if snake.x >= GRID_WIDTH {
             snake.x = 0
         }
@@ -129,7 +129,7 @@ move_snake :: proc(direction : Direction, direction_changed : bool) {
         if snake.next != nil {
             for s := snake.next; s != nil; s = s.next {
                 if snake.x == s.x && snake.y == s.y {
-                    state = .GAME_OVER
+                    state = .Game_Over
                     return
                 }
 
@@ -182,7 +182,7 @@ reset :: proc() {
     snake = Snake{x = GRID_WIDTH / 2, y = GRID_HEIGHT / 2}
     clear(&snake_poll)
     apple = { 0, 0 }
-    state = .PLAY
+    state = .Play
 }
 
 main :: proc() {
@@ -190,27 +190,27 @@ main :: proc() {
     defer rl.CloseWindow()
 
     randomize_apple_position()
-    direction : Direction = .UNKNOWN
+    direction: Direction = .Unknown
     for !rl.WindowShouldClose() {
         key_pressed := rl.GetKeyPressed()
-        if state == .PLAY {
-            new_direction : Direction = .UNKNOWN
+        if state == .Play {
+            new_direction: Direction = .Unknown
             #partial switch key_pressed {
-                case .LEFT, .A, .J: new_direction = .LEFT
-                case .RIGHT, .D, .L: new_direction = .RIGHT
-                case .UP, .W, .I: new_direction = .UP
-                case .DOWN, .S, .K: new_direction = .DOWN
+                case .LEFT, .A, .J: new_direction = .Left
+                case .RIGHT, .D, .L: new_direction = .Right
+                case .UP, .W, .I: new_direction = .Up
+                case .DOWN, .S, .K: new_direction = .Down
             }
 
             direction_changed := false
-            if (snake.next == nil || new_direction != get_opposite_direction(direction)) && new_direction != .UNKNOWN {
+            if (snake.next == nil || new_direction != get_opposite_direction(direction)) && new_direction != .Unknown {
                 direction = new_direction
                 direction_changed = true
             }
             move_snake(direction, direction_changed)
         } else {
             if key_pressed != .KEY_NULL {
-                direction = .UNKNOWN
+                direction = .Unknown
                 reset()
                 continue
             }
@@ -219,7 +219,7 @@ main :: proc() {
         rl.BeginDrawing()
             draw_score()
 
-            if state == .PLAY {
+            if state == .Play {
                 draw_snake()
                 draw_apple()
             } else {
