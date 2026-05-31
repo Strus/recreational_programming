@@ -97,7 +97,10 @@ draw_file_list :: proc(file_list: ^File_List, s: ^t.Window, y, x: uint) {
                 }
             }
         }
-        case: draw_textf(s, y + i, x, "%s", file_info.name, bg=bg)
+        case: {
+            fg : t.Any_Color = .Red if .Execute_User in file_info.mode else s.curr_styles.fg
+            draw_textf(s, y + i, x, "%s", file_info.name, fg=fg, bg=bg)
+        }
         }
 
         if uint(len(file_info.name)) > longest {
