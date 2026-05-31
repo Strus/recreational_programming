@@ -93,8 +93,8 @@ randomize_apple_position :: proc() {
 
     if hi == 0 {
         hi = GRID_WIDTH
-        for apple.x = cast(i32)rand.int_range(lo, hi); apple.x == snake.x; apple.x = cast(i32)rand.int_range(lo, hi) {}
-        for apple.y = cast(i32)rand.int_range(lo, hi); apple.y == snake.y; apple.y = cast(i32)rand.int_range(lo, hi) {}
+        for apple.x = i32(rand.int_range(lo, hi)); apple.x == snake.x; apple.x = i32(rand.int_range(lo, hi)) {}
+        for apple.y = i32(rand.int_range(lo, hi)); apple.y == snake.y; apple.y = i32(rand.int_range(lo, hi)) {}
         return
     }
 
@@ -149,7 +149,7 @@ move_snake :: proc(direction: Direction, direction_changed: bool) {
         for i in 0..<(GRID_WIDTH) {
             for j in 0..<(GRID_HEIGHT) {
                 if !grid[i][j] {
-                    append(&free_cells, [2]i32{ cast(i32)i, cast(i32)j })
+                    append(&free_cells, [2]i32{ i32(i), i32(j) })
                 }
             }
         }
