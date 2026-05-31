@@ -78,6 +78,7 @@ draw_file_list :: proc(file_list: ^File_List, s: ^t.Window, y, x: uint) {
     page : uint = file_list.selection / file_list.page_size
     start := page*file_list.page_size
     end := min(uint(len(file_list.entries)), start + file_list.page_size)
+    longest : uint = 0
     for file_info, i in file_list.entries[start:end] {
         i := uint(i)
         bg : t.Any_Color = t.Color_8.Blue if file_list.selection == i + start else s.curr_styles.bg
@@ -91,9 +92,21 @@ draw_file_list :: proc(file_list: ^File_List, s: ^t.Window, y, x: uint) {
             defer delete(link_path)
             if err == os.ERROR_NONE {
                 draw_textf(s, y + i, x, "%s -> %s", file_info.name, link_path, fg=.Red, bg=bg)
+                if uint(len(file_info.name) + len(link_path) + 4) > longest {
+                    longest = len(file_info.name) + len(link_path) + 4
+                }
             }
         }
         case: draw_textf(s, y + i, x, "%s", file_info.name, bg=bg)
         }
+
+        if uint(len(file_info.name)) > longest {
+            longest = len(file_info.name)
+        }
+    }
+
+    current_len : uint = len(file_list.entries[file_list.selection].name)
+    for i in 0..<(longest - current_len) {
+        draw_text(s, y + file_list.selection % file_list.page_size, x + i + current_len, " ", bg=t.Color_8.Blue)
     }
 }
