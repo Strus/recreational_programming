@@ -62,6 +62,7 @@ main :: proc() {
     s := t.init_screen(tb.VTABLE)
     defer t.destroy_screen(&s)
     t.set_term_mode(&s, .Cbreak)
+    t.enable_alt_buffer(true)
     t.hide_cursor(true)
 
     start_cwd, cwd_err := os.get_working_directory(context.allocator)
