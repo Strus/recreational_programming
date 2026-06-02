@@ -3,9 +3,10 @@ package fm
 import t "vendor/termcl"
 import tb "vendor/termcl/term"
 
-import "core:os"
 import "core:fmt"
+import "core:os"
 import "core:strings"
+import "core:time"
 
 FILE_TREE_POS: uint : 2
 PADDING            :: 1
@@ -98,6 +99,9 @@ main :: proc() {
     file_list_init(&tree, cwd, term_size.h - 1 - FILE_TREE_POS)
 
     should_quit := false
+    time_from_last_keypress := time.Tick{0}
+    last_keypress: t.Key
+    last_mod: t.Mod
     for !should_quit {
         t.clear(&s, .Everything)
         term_size := t.get_term_size()
@@ -120,7 +124,9 @@ main :: proc() {
                 if input.mod == .Shift {
                     file_list_advance(&tree, len(tree.entries))
                 } else {
-                    file_list_back(&tree, len(tree.entries))
+                    if last_keypress == .G && last_mod == .None && time.tick_lap_time(&time_from_last_keypress) <= time.Second {
+                        file_list_back(&tree, len(tree.entries))
+                    }
                 }
             }
             case .U: {
@@ -135,6 +141,10 @@ main :: proc() {
             }
             case .E: edit(&s, &tree.entries[tree.selection])
             }
+
+            time_from_last_keypress := time.tick_lap_time(&time_from_last_keypress)
+            last_keypress = input.key
+            last_mod = input.mod
 		}
     }
 
