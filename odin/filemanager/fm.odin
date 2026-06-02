@@ -4,6 +4,8 @@ import t "vendor/termcl"
 import tb "vendor/termcl/term"
 
 import "core:os"
+import "core:fmt"
+import "core:strings"
 
 FILE_TREE_POS: uint : 2
 PADDING            :: 1
@@ -59,18 +61,39 @@ edit :: proc(s:  ^t.Screen, file_info: ^os.File_Info) {
 }
 
 main :: proc() {
+    if len(os.args) > 1 {
+        path_arg := strings.clone(os.args[1])
+        if strings.starts_with(path_arg, "~") {
+            home_path, found := os.lookup_env("HOME", context.allocator)
+            if !found || home_path == "" {
+                fmt.printfln("$HOME env variable not set")
+                os.exit(1)
+            }
+            defer delete(home_path)
+            path_arg, _ = strings.replace(path_arg, "~", home_path, 1)
+        }
+
+        if !os.exists(path_arg) {
+            fmt.printfln("Path %s does not exist!", path_arg)
+            os.exit(1)
+        }
+
+        cwd = path_arg
+    } else {
+        start_cwd, cwd_err := os.get_working_directory(context.allocator)
+        if cwd_err != os.ERROR_NONE {
+            fmt.println("Failed to get current working directory: %s", os.error_string(cwd_err))
+            os.exit(1)
+        }
+        cwd = start_cwd
+    }
+
     s := t.init_screen(tb.VTABLE)
     defer t.destroy_screen(&s)
     t.set_term_mode(&s, .Cbreak)
     t.enable_alt_buffer(true)
     t.hide_cursor(true)
 
-    start_cwd, cwd_err := os.get_working_directory(context.allocator)
-    defer delete(start_cwd)
-    if cwd_err != os.ERROR_NONE {
-        return
-    }
-    cwd = start_cwd
     term_size := t.get_term_size()
     file_list_init(&tree, cwd, term_size.h - 1 - FILE_TREE_POS)
 
@@ -88,7 +111,7 @@ main :: proc() {
         input, input_ok := t.read_blocking(&s).(t.Keyboard_Input)
 		if input_ok {
             #partial switch input.key {
-            case .Escape: should_quit = true
+            case .Q: should_quit = true
             case .J: file_list_next(&tree)
             case .K: file_list_prev(&tree)
             case .H: go_to_parent()
@@ -116,4 +139,5 @@ main :: proc() {
     }
 
     file_list_destroy(&tree)
+    delete(cwd)
 }
