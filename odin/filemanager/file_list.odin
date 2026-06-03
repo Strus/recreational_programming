@@ -2,14 +2,16 @@ package fm
 
 import "core:os"
 import "core:slice"
+import "core:unicode/utf8"
+import "core:strings"
 
 import t "vendor/termcl"
 
-DEFAULT_PAGE_SIZE :: 20
 
 File_List :: struct {
     entries: [dynamic]os.File_Info,
-    selection: uint,
+    marked_files: map[os.File_Info]bool,
+    current: uint,
     page_size: uint,
 }
 
@@ -18,8 +20,11 @@ parent_folder := os.File_Info {
     type = .Directory,
 }
 
-file_list_init :: proc(file_list: ^File_List, path: string, page_size: uint = DEFAULT_PAGE_SIZE) {
-    file_list.selection = 0
+file_list_init :: proc(file_list: ^File_List, path: string, page_size: uint) {
+    if file_list.marked_files == nil {
+        file_list.marked_files = make(map[os.File_Info]bool)
+    }
+    file_list.current = 0
     file_list.page_size = page_size
     append(&file_list.entries, parent_folder)
 
@@ -57,59 +62,93 @@ file_list_prev :: proc(file_list: ^File_List) {
 }
 
 file_list_advance :: proc(file_list: ^File_List, step: uint) {
-    file_list.selection += step
-    file_list.selection = min(file_list.selection, uint(len(file_list.entries) - 1))
+    file_list.current += step
+    file_list.current = min(file_list.current, uint(len(file_list.entries) - 1))
 }
 
 file_list_back :: proc(file_list: ^File_List, step: uint) {
-    if file_list.selection <= step {
-        file_list.selection = 0
+    if file_list.current <= step {
+        file_list.current = 0
         return
     }
 
-    file_list.selection -= step
+    file_list.current -= step
 }
 
 file_list_destroy :: proc(file_list: ^File_List) {
     delete(file_list.entries)
+    delete(file_list.marked_files)
 }
 
-draw_file_list :: proc(file_list: ^File_List, s: ^t.Window, y, x: uint) {
-    page : uint = file_list.selection / file_list.page_size
+file_list_toggle_mark :: proc(file_list: ^File_List) {
+    selected := &file_list.entries[file_list.current]
+    if (selected^ in file_list.marked_files) {
+        delete_key(&file_list.marked_files, selected^)
+    } else {
+        file_list.marked_files[selected^] = true
+    }
+}
+
+draw_file_list :: proc(file_list: ^File_List, s: ^t.Window) {
+    page : uint = file_list.current / file_list.page_size
     start := page*file_list.page_size
     end := min(uint(len(file_list.entries)), start + file_list.page_size)
-    longest : uint = 0
-    for file_info, i in file_list.entries[start:end] {
+    for &file_info, i in file_list.entries[start:end] {
         i := uint(i)
-        bg : t.Any_Color = t.Color_8.Blue if file_list.selection == i + start else s.curr_styles.bg
+        fg : t.Any_Color = t.Color_8.White if file_list.current == i + start else s.curr_styles.fg
+        bg : t.Any_Color = t.Color_RGB{50,50,50} if file_list.current == i + start else s.curr_styles.bg
+        metadata_string := get_metadata_string(file_list, &file_info, file_list.current == i + start)
+        defer delete(metadata_string)
 
         #partial switch file_info.type {
         case .Directory: {
-            draw_textf(s, y + i, x, "%s", file_info.name, styles={ .Bold }, bg=bg)
+            draw_textf(s, i, 0, "%s%s", metadata_string, file_info.name, styles={ .Bold }, fg=t.Color_RGB{125,125,125}, bg=bg)
         }
         case .Symlink: {
             link_path, err := os.read_link(file_info.fullpath, context.allocator)
             defer delete(link_path)
             if err == os.ERROR_NONE {
-                draw_textf(s, y + i, x, "%s -> %s", file_info.name, link_path, fg=.Red, bg=bg)
-                if uint(len(file_info.name) + len(link_path) + 4) > longest {
-                    longest = len(file_info.name) + len(link_path) + 4
-                }
+                fg : t.Any_Color = t.Color_8.Black if file_list.current == i + start else .Red
+                draw_textf(s, i, 0, "%s%s", metadata_string, file_info.name, fg=fg, bg=bg)
+                draw_textf(s, i, text_width(metadata_string) + len(file_info.name), " -> %s", link_path, styles={.Italic}, fg=fg, bg=bg)
             }
         }
         case: {
-            fg : t.Any_Color = .Red if .Execute_User in file_info.mode else s.curr_styles.fg
-            draw_textf(s, y + i, x, "%s", file_info.name, fg=fg, bg=bg)
+            draw_textf(s, i, 0, "%s%s", metadata_string, file_info.name, fg=fg, bg=bg)
         }
-        }
-
-        if uint(len(file_info.name)) > longest {
-            longest = len(file_info.name)
         }
     }
 
-    current_len : uint = len(file_list.entries[file_list.selection].name)
-    for i in 0..<(longest - current_len) {
-        draw_text(s, y + file_list.selection % file_list.page_size, x + i + current_len, " ", bg=t.Color_8.Blue)
+    selected_entry := &file_list.entries[file_list.current]
+    metadata_string := get_metadata_string(file_list, selected_entry, true)
+    defer delete(metadata_string)
+    selected_text_len : uint = len(selected_entry.name) + text_width(metadata_string)
+    for i in 0..<(s.width.? - selected_text_len) {
+        draw_text(s, file_list.current % file_list.page_size, i + selected_text_len, " ", bg=t.Color_RGB{50,50,50})
     }
+}
+
+get_metadata_string :: proc(file_list: ^File_List, entry: ^os.File_Info, is_selected: bool) -> string {
+    b := strings.builder_make()
+    defer strings.builder_destroy(&b)
+
+    if entry^ in file_list.marked_files {
+        strings.write_string(&b, "*")
+    } else {
+        strings.write_string(&b, " ")
+    }
+    strings.write_string(&b, " ")
+
+    if entry.type == .Directory {
+        strings.write_string(&b, " " if !is_selected else " ")
+    } else {
+        strings.write_string(&b, " ")
+    }
+
+    return strings.clone(strings.to_string(b))
+}
+
+text_width :: proc(text: string) -> uint {
+    _, _, width := utf8.grapheme_count(text)
+    return uint(width)
 }

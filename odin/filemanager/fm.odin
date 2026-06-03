@@ -9,9 +9,9 @@ import "core:strings"
 import "core:time"
 
 FILE_TREE_POS: uint : 2
-PADDING            :: 1
 
 tree : File_List;
+tree_window: t.Window
 cwd: string
 page: uint = 0
 
@@ -97,6 +97,8 @@ main :: proc() {
 
     term_size := t.get_term_size()
     file_list_init(&tree, cwd, term_size.h - 1 - FILE_TREE_POS)
+    tree_window = t.init_window(FILE_TREE_POS, 0, term_size.h - FILE_TREE_POS - 1, term_size.w)
+    defer t.destroy_window(&tree_window)
 
     should_quit := false
     time_from_last_keypress := time.Tick{0}
@@ -104,13 +106,15 @@ main :: proc() {
     last_mod: t.Mod
     for !should_quit {
         t.clear(&s, .Everything)
+        t.clear(&tree_window, .Everything)
         term_size := t.get_term_size()
 
         draw_textf(&s, 0, 0, "%s", cwd)
-        draw_file_list(&tree, &s, FILE_TREE_POS, PADDING)
-        draw_textf(&s, term_size.h - 1, 0, "current_pos: %d | page_size: %d", tree.selection, tree.page_size)
+        draw_file_list(&tree, &tree_window)
+        draw_textf(&s, term_size.h - 1, 0, "current_pos: %d | page_size: %d", tree.current, tree.page_size)
 
         t.blit(&s)
+        t.blit(&tree_window)
 
         input, input_ok := t.read_blocking(&s).(t.Keyboard_Input)
 		if input_ok {
@@ -119,7 +123,16 @@ main :: proc() {
             case .J: file_list_next(&tree)
             case .K: file_list_prev(&tree)
             case .H: go_to_parent()
-            case .D: file_list_advance(&tree, term_size.h / 2)
+            case .D: {
+                if input.mod == .Ctrl {
+                    file_list_advance(&tree, term_size.h / 2)
+                }
+            }
+            case .U: {
+                if input.mod == .Ctrl {
+                    file_list_back(&tree, term_size.h / 2)
+                }
+            }
             case .G: {
                 if input.mod == .Shift {
                     file_list_advance(&tree, len(tree.entries))
@@ -129,17 +142,15 @@ main :: proc() {
                     }
                 }
             }
-            case .U: {
-                file_list_back(&tree, term_size.h / 2)
-            }
             case .L, .Enter: {
-                if tree.selection == 0 {
+                if tree.current == 0 {
                     go_to_parent()
                 } else {
-                    open(&tree.entries[tree.selection])
+                    open(&tree.entries[tree.current])
                 }
             }
-            case .E: edit(&s, &tree.entries[tree.selection])
+            case .E: edit(&s, &tree.entries[tree.current])
+            case .Space: file_list_toggle_mark(&tree)
             }
 
             time_from_last_keypress := time.tick_lap_time(&time_from_last_keypress)
