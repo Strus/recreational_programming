@@ -100,7 +100,7 @@ main :: proc() {
     t.hide_cursor(true)
 
     term_size := t.get_term_size()
-    file_list_init(&tree, cwd, term_size.h - 1 - FILE_TREE_POS)
+    file_list_init(&tree, cwd)
     tree_window = t.init_window(FILE_TREE_POS, 0, term_size.h - FILE_TREE_POS - 1, term_size.w)
     defer t.destroy_window(&tree_window)
 
@@ -116,7 +116,6 @@ main :: proc() {
 
         draw_textf(&s, 0, 0, "%s", cwd)
         file_list_draw(&tree, &tree_window)
-        draw_textf(&s, term_size.h - 1, 0, "current_pos: %d | page_size: %d", tree.current, tree.page_size)
 
         t.blit(&s)
         t.blit(&tree_window)

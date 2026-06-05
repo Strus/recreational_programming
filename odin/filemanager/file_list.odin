@@ -8,12 +8,14 @@ import "core:strings"
 import t "vendor/termcl"
 
 
+METADATA_MAX_BYTES :: len("  ")
+
 File_List :: struct {
     entries: [dynamic]os.File_Info,
     marked_files: map[^os.File_Info]bool,
     cwd: string,
     current: uint,
-    page_size: uint,
+    _metadata_buf: [METADATA_MAX_BYTES]u8
 }
 
 parent_folder := os.File_Info {
@@ -21,14 +23,13 @@ parent_folder := os.File_Info {
     type = .Directory,
 }
 
-file_list_init :: proc(file_list: ^File_List, path: string, page_size: uint) {
+file_list_init :: proc(file_list: ^File_List, path: string) {
     if file_list.marked_files == nil {
         file_list.marked_files = make(map[^os.File_Info]bool)
     } else {
         file_list_unmark_all(file_list)
     }
     file_list.current = 0
-    file_list.page_size = page_size
     file_list.cwd = strings.clone(path)
     parent_folder.fullpath = os.dir(path)
     clear(&file_list.entries)
@@ -55,12 +56,12 @@ file_list_init :: proc(file_list: ^File_List, path: string, page_size: uint) {
 }
 
 file_list_cd :: proc(file_list: ^File_List, path: string) {
-    file_list_init(file_list, path, file_list.page_size)
+    file_list_init(file_list, path)
 }
 
 file_list_refresh :: proc(file_list: ^File_List) {
     c := file_list.current
-    file_list_init(file_list, file_list.cwd, file_list.page_size)
+    file_list_init(file_list, file_list.cwd)
     file_list.current = c
 }
 
@@ -110,15 +111,15 @@ file_list_unmark_all :: proc(file_list: ^File_List) {
 }
 
 file_list_draw :: proc(file_list: ^File_List, s: ^t.Window) {
-    page : uint = file_list.current / file_list.page_size
-    start := page*file_list.page_size
-    end := min(uint(len(file_list.entries)), start + file_list.page_size)
+    page_size := s.height.?
+    page : uint = file_list.current / page_size
+    start := page * page_size
+    end := min(uint(len(file_list.entries)), start + page_size)
     for &file_info, i in file_list.entries[start:end] {
         i := uint(i)
         fg : t.Any_Color = t.Color_8.White if file_list.current == i + start else s.curr_styles.fg
         bg : t.Any_Color = t.Color_RGB{50,50,50} if file_list.current == i + start else s.curr_styles.bg
         metadata_string := get_metadata_string(file_list, &file_info, file_list.current == i + start)
-        defer delete(metadata_string)
 
         #partial switch file_info.type {
         case .Directory: {
@@ -141,16 +142,14 @@ file_list_draw :: proc(file_list: ^File_List, s: ^t.Window) {
 
     selected_entry := &file_list.entries[file_list.current]
     metadata_string := get_metadata_string(file_list, selected_entry, true)
-    defer delete(metadata_string)
     selected_text_len : uint = len(selected_entry.name) + text_width(metadata_string)
     for i in 0..<(s.width.? - selected_text_len) {
-        draw_text(s, file_list.current % file_list.page_size, i + selected_text_len, " ", bg=t.Color_RGB{50,50,50})
+        draw_text(s, file_list.current % page_size, i + selected_text_len, " ", bg=t.Color_RGB{50,50,50})
     }
 }
 
 get_metadata_string :: proc(file_list: ^File_List, entry: ^os.File_Info, is_selected: bool) -> string {
-    b := strings.builder_make()
-    defer strings.builder_destroy(&b)
+    b := strings.builder_from_bytes(file_list._metadata_buf[:])
 
     if entry in file_list.marked_files {
         strings.write_string(&b, "")
@@ -165,7 +164,7 @@ get_metadata_string :: proc(file_list: ^File_List, entry: ^os.File_Info, is_sele
         strings.write_string(&b, " ")
     }
 
-    return strings.clone(strings.to_string(b))
+    return strings.to_string(b)
 }
 
 text_width :: proc(text: string) -> uint {
