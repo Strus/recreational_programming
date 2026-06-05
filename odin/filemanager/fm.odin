@@ -3,6 +3,7 @@ package fm
 import t "vendor/termcl"
 import tb "vendor/termcl/term"
 
+import "core:path/filepath"
 import "core:fmt"
 import "core:os"
 import "core:strings"
@@ -14,6 +15,7 @@ tree : File_List;
 tree_window: t.Window
 cwd: string
 page: uint = 0
+to_copy : [dynamic]os.File_Info
 
 go_to_parent :: proc() {
     cwd = os.dir(cwd)
@@ -59,6 +61,8 @@ edit :: proc(s:  ^t.Screen, file_info: ^os.File_Info) {
     if err == os.ERROR_NONE {
         _, _ = os.process_wait(p)
 	}
+
+    file_list_refresh(&tree)
 }
 
 main :: proc() {
@@ -105,12 +109,13 @@ main :: proc() {
     last_keypress: t.Key
     last_mod: t.Mod
     for !should_quit {
+        term_size = t.get_term_size()
+        t.resize_window(&tree_window, term_size.h - FILE_TREE_POS - 1, term_size.w)
         t.clear(&s, .Everything)
         t.clear(&tree_window, .Everything)
-        term_size := t.get_term_size()
 
         draw_textf(&s, 0, 0, "%s", cwd)
-        draw_file_list(&tree, &tree_window)
+        file_list_draw(&tree, &tree_window)
         draw_textf(&s, term_size.h - 1, 0, "current_pos: %d | page_size: %d", tree.current, tree.page_size)
 
         t.blit(&s)
@@ -123,6 +128,32 @@ main :: proc() {
             case .J: file_list_next(&tree)
             case .K: file_list_prev(&tree)
             case .H: go_to_parent()
+            case .L, .Enter: {
+                open(&tree.entries[tree.current])
+            }
+            case .Y: {
+                for entry in tree.marked_files {
+                    append(&to_copy, entry^)
+                }
+                file_list_unmark_all(&tree)
+                file_list_refresh(&tree)
+            }
+            case .P: {
+                for entry in to_copy {
+                    destination := filepath.join({cwd, entry.name}) or_continue
+                    defer delete(destination)
+                    conflict_suffix := 0
+                    for os.exists(destination) {
+                        conflict_suffix += 1
+                        conflict_suffix_str := fmt.aprintf("%d", conflict_suffix)
+                        defer delete (conflict_suffix_str)
+                        destination = filepath.join({cwd, strings.concatenate({os.short_stem(entry.name), " (", conflict_suffix_str, ")", os.long_ext(entry.name)})}) or_continue
+                    }
+                    os.copy_file(destination, entry.fullpath)
+                }
+                clear(&to_copy)
+                file_list_refresh(&tree)
+            }
             case .D: {
                 if input.mod == .Ctrl {
                     file_list_advance(&tree, term_size.h / 2)
@@ -136,17 +167,10 @@ main :: proc() {
             case .G: {
                 if input.mod == .Shift {
                     file_list_advance(&tree, len(tree.entries))
-                } else {
+                } else if input.mod == .None {
                     if last_keypress == .G && last_mod == .None && time.tick_lap_time(&time_from_last_keypress) <= time.Second {
                         file_list_back(&tree, len(tree.entries))
                     }
-                }
-            }
-            case .L, .Enter: {
-                if tree.current == 0 {
-                    go_to_parent()
-                } else {
-                    open(&tree.entries[tree.current])
                 }
             }
             case .E: edit(&s, &tree.entries[tree.current])

@@ -10,7 +10,8 @@ import t "vendor/termcl"
 
 File_List :: struct {
     entries: [dynamic]os.File_Info,
-    marked_files: map[os.File_Info]bool,
+    marked_files: map[^os.File_Info]bool,
+    cwd: string,
     current: uint,
     page_size: uint,
 }
@@ -22,10 +23,15 @@ parent_folder := os.File_Info {
 
 file_list_init :: proc(file_list: ^File_List, path: string, page_size: uint) {
     if file_list.marked_files == nil {
-        file_list.marked_files = make(map[os.File_Info]bool)
+        file_list.marked_files = make(map[^os.File_Info]bool)
+    } else {
+        file_list_unmark_all(file_list)
     }
     file_list.current = 0
     file_list.page_size = page_size
+    file_list.cwd = strings.clone(path)
+    parent_folder.fullpath = os.dir(path)
+    clear(&file_list.entries)
     append(&file_list.entries, parent_folder)
 
     tree, tree_err := os.read_all_directory_by_path(path, context.allocator)
@@ -49,8 +55,13 @@ file_list_init :: proc(file_list: ^File_List, path: string, page_size: uint) {
 }
 
 file_list_cd :: proc(file_list: ^File_List, path: string) {
-    clear(&file_list.entries)
     file_list_init(file_list, path, file_list.page_size)
+}
+
+file_list_refresh :: proc(file_list: ^File_List) {
+    c := file_list.current
+    file_list_init(file_list, file_list.cwd, file_list.page_size)
+    file_list.current = c
 }
 
 file_list_next :: proc(file_list: ^File_List) {
@@ -78,18 +89,27 @@ file_list_back :: proc(file_list: ^File_List, step: uint) {
 file_list_destroy :: proc(file_list: ^File_List) {
     delete(file_list.entries)
     delete(file_list.marked_files)
+    delete(file_list.cwd)
 }
 
 file_list_toggle_mark :: proc(file_list: ^File_List) {
     selected := &file_list.entries[file_list.current]
-    if (selected^ in file_list.marked_files) {
-        delete_key(&file_list.marked_files, selected^)
+    if selected.name == parent_folder.name {
+        return
+    }
+
+    if (selected in file_list.marked_files) {
+        delete_key(&file_list.marked_files, selected)
     } else {
-        file_list.marked_files[selected^] = true
+        file_list.marked_files[selected] = true
     }
 }
 
-draw_file_list :: proc(file_list: ^File_List, s: ^t.Window) {
+file_list_unmark_all :: proc(file_list: ^File_List) {
+    clear(&file_list.marked_files)
+}
+
+file_list_draw :: proc(file_list: ^File_List, s: ^t.Window) {
     page : uint = file_list.current / file_list.page_size
     start := page*file_list.page_size
     end := min(uint(len(file_list.entries)), start + file_list.page_size)
@@ -132,8 +152,8 @@ get_metadata_string :: proc(file_list: ^File_List, entry: ^os.File_Info, is_sele
     b := strings.builder_make()
     defer strings.builder_destroy(&b)
 
-    if entry^ in file_list.marked_files {
-        strings.write_string(&b, "*")
+    if entry in file_list.marked_files {
+        strings.write_string(&b, "")
     } else {
         strings.write_string(&b, " ")
     }
