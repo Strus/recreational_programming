@@ -170,7 +170,10 @@ main :: proc() {
                     defer delete (conflict_suffix_str)
                     destination = filepath.join({cwd, strings.concatenate({os.short_stem(entry.name), " (", conflict_suffix_str, ")", os.long_ext(entry.name)})}) or_continue
                 }
-                os.copy_file(destination, entry.fullpath)
+                #partial switch entry.type {
+                case .Regular, .Symlink, .Named_Pipe, .Socket: os.copy_file(destination, entry.fullpath)
+                case .Directory: os.copy_directory_all(destination, entry.fullpath)
+                }
             }
             clear(&to_copy)
             file_list_refresh(&file_list)
