@@ -2,6 +2,13 @@ package fm
 
 import t "vendor/termcl"
 
+import "core:unicode/utf8"
+
+text_width :: proc(text: string) -> uint {
+    _, _, width := utf8.grapheme_count(text)
+    return uint(width)
+}
+
 draw_text :: proc(
     screen: ^t.Window,
     y, x: uint,
